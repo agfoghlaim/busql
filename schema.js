@@ -78,6 +78,21 @@ const busStopType = new GraphQLObjectType({
 
   })
 })
+
+// const basicBusStopTypeList = new GraphQLObjectType({
+//   name: 'basicBusStopListType',
+
+// })
+// GraphQLList(busTimetableTypeWeek)
+const basicBusStopType = new GraphQLObjectType({
+  name:'BasicStop',
+  fields:()=>({
+    name:{type:GraphQLString},
+    bestopid:{type:GraphQLString},
+    stop_sequence:{type:GraphQLInt}
+  })
+})
+
 const busRouteType  = new GraphQLObjectType({
   name:'Route',
   fields:()=>({
@@ -119,6 +134,25 @@ const RootQuery = new GraphQLObjectType({
       },resolve(parentValue,args){
         let r = timetables.find(t=>t.route===args.route&&t.direction ===args.direction)
         return r.stops.find(stop=>stop.bestopid===args.bestopid)
+      }
+    },
+    allstops:{
+      type: new GraphQLList(basicBusStopType),
+      
+      args:{
+      },resolve(parentValue,args){
+        let stops = []
+        timetables.forEach((route)=>{
+            let p =  route.stops.map(stop=>{
+              return {name:stop.name,bestopid:stop.bestopid,stop_sequence:stop.stop_sequence}
+              
+            })
+         stops.push([...p])
+            
+        })
+        
+        console.log(stops.flat())
+        return stops.flat()
       }
     }
   }
