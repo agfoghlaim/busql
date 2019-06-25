@@ -18,7 +18,7 @@ const busTimetableTypeWeek = new GraphQLObjectType({
 })
 
 const busTimetableTypeSat = new GraphQLObjectType({
-  name: 'us_times_sat',
+  name: 'bus_times_sat',
   fields:()=>({
     bus:{type:GraphQLString},
     time:{type:GraphQLString}
@@ -87,6 +87,8 @@ const busStopType = new GraphQLObjectType({
 const basicBusStopType = new GraphQLObjectType({
   name:'BasicStop',
   fields:()=>({
+    route:{type:GraphQLString},
+    direction:{type:GraphQLString},
     name:{type:GraphQLString},
     bestopid:{type:GraphQLString},
     stop_sequence:{type:GraphQLInt}
@@ -111,10 +113,11 @@ const RootQuery = new GraphQLObjectType({
     busRoute:{
       type: busRouteType,
       args:{
-        route:{type:GraphQLString}
+        route:{type:GraphQLString},
+        direction:{type:GraphQLString}
       },
       resolve(parentValue,args){
-          let m = timetables.filter(t=>t.route === args.route)
+          let m = timetables.filter(t=>t.route === args.route && t.direction === args.direction)
           return m[0]
       }
       
@@ -133,6 +136,9 @@ const RootQuery = new GraphQLObjectType({
         bestopid: {type:GraphQLString}
       },resolve(parentValue,args){
         let r = timetables.find(t=>t.route===args.route&&t.direction ===args.direction)
+        //console.log(r.stops.find(stop=>stop.bestopid===args.bestopid))
+
+     
         return r.stops.find(stop=>stop.bestopid===args.bestopid)
       }
     },
@@ -144,14 +150,14 @@ const RootQuery = new GraphQLObjectType({
         let stops = []
         timetables.forEach((route)=>{
             let p =  route.stops.map(stop=>{
-              return {name:stop.name,bestopid:stop.bestopid,stop_sequence:stop.stop_sequence}
+              return {name:stop.name,bestopid:stop.bestopid,stop_sequence:stop.stop_sequence,route:route.route,direction:route.direction}
               
             })
          stops.push([...p])
             
         })
         
-        console.log(stops.flat())
+        //console.log(stops.flat())
         return stops.flat()
       }
     }
