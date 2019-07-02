@@ -1,43 +1,47 @@
-const timetables = require('./timetablesOut.json')
+//mongo related
+const config = require('./config');
+const mongoose = require('mongoose');
+const BusRoute = require('./mongoSchema');
+//const helpers = require('./helpers');
 const{
   GraphQLObjectType,
   GraphQLString,
   GraphQLInt,
   GraphQLSchema,
   GraphQLList,
-  GraphQLNonNull
 } = require('graphql');
 
+//timetables is being phased out
+const timetables = require('./timetablesOut.json');
 
-const busTimetableTypeWeek = new GraphQLObjectType({
-  name: 'bus_times_week',
+mongoose.connect(config.MONGO_URI,{useNewUrlParser:true})
+
+
+/*
+Gefine GraphQL Types
+*/
+
+const busTimetableType = new GraphQLObjectType({
+  name: 'bus_times',
   fields:()=>({
     bus:{type:GraphQLString},
     time:{type:GraphQLString}
   })
 })
 
-const busTimetableTypeSat = new GraphQLObjectType({
-  name: 'bus_times_sat',
-  fields:()=>({
-    bus:{type:GraphQLString},
-    time:{type:GraphQLString}
-  })
-})
+// const stopWithSpecificTimetableType = new GraphQLObjectType({
+//   name: 'stopWithSpecificTimetable',
+//   fields:()=>({
 
-const busTimetableTypeSun = new GraphQLObjectType({
-  name: 'bus_times_sun',
-  fields:()=>({
-    bus:{type:GraphQLString},
-    time:{type:GraphQLString}
-  })
-})
+//   })
+// })
+
 
 const WeatherType = new GraphQLObjectType({
 name: 'weather',
   fields:()=>({
-    lastUpdated:{type:GraphQLInt},
-    precipIntensity:{type:GraphQLInt},
+    lastUpdated:{type:GraphQLString},
+    precipIntensity:{type:GraphQLString},
     summary:{type:GraphQLString},
     icon:{type:GraphQLString}
   })
@@ -46,7 +50,7 @@ name: 'weather',
 const snapshotType = new GraphQLObjectType({
   name:'snapshot',
   fields:()=>({
-    _id:{type:GraphQLString},
+    _id:{type:GraphQLInt},
     queryScheduledTime:{type:GraphQLString},
     dayOfWeek:{type:GraphQLString},
     queryDateTime:{type:GraphQLString},
@@ -61,29 +65,25 @@ const snapshotType = new GraphQLObjectType({
     earlyOrLate:{type:GraphQLString},
     minutesOff:{type:GraphQLString},
     weather:{type: WeatherType}
-
   })
 })
+
 
 const busStopType = new GraphQLObjectType({
   name:'Stop',
   fields:()=>({
+    _id:{type:GraphQLInt},
     name:{type:GraphQLString},
     bestopid:{type:GraphQLString},
-    stop_sequence:{type:GraphQLString},
-    bus_times_week:{type: GraphQLList(busTimetableTypeWeek)},
-    bus_times_sat:{type: GraphQLList(busTimetableTypeSat)}, 
-    bus_times_sun:{type: GraphQLList(busTimetableTypeSun)},
+    stop_sequence:{type:GraphQLInt},
+    bus_times_week:{type: GraphQLList(busTimetableType)},
+    bus_times_sat:{type: GraphQLList(busTimetableType)}, 
+    bus_times_sun:{type: GraphQLList(busTimetableType)},
     snapshots: {type: GraphQLList(snapshotType)}
 
   })
 })
 
-// const basicBusStopTypeList = new GraphQLObjectType({
-//   name: 'basicBusStopListType',
-
-// })
-// GraphQLList(busTimetableTypeWeek)
 const basicBusStopType = new GraphQLObjectType({
   name:'BasicStop',
   fields:()=>({
@@ -102,11 +102,25 @@ const busRouteType  = new GraphQLObjectType({
     routename:{type:GraphQLString},
     direction:{type:GraphQLString},
     stops:{type: GraphQLList(busStopType)}
-  
-
   })
 })
 
+const routeOneStopType = new GraphQLObjectType({
+  name:'RouteStop',
+  fields:()=>({
+    route:{type:GraphQLString},
+    routename:{type:GraphQLString},
+    direction: {type:GraphQLString},
+    stops:{type:busStopType}
+  })
+})
+
+
+/*
+
+GraphQL Queries
+
+*/
 const RootQuery = new GraphQLObjectType({
   name:'RootQueryType',
   fields:{
@@ -116,9 +130,13 @@ const RootQuery = new GraphQLObjectType({
         route:{type:GraphQLString},
         direction:{type:GraphQLString}
       },
-      resolve(parentValue,args){
-          let m = timetables.filter(t=>t.route === args.route && t.direction === args.direction)
+      async resolve(parentValue,args){
+          /*
+            let m = timetables.filter(t=>t.route === args.route && t.direction === args.direction)
           return m[0]
+          */
+          const {route, direction} = args
+          return await BusRoute.findOne({route:route,direction:direction})
       }
       
     },
@@ -134,12 +152,59 @@ const RootQuery = new GraphQLObjectType({
         route:{type:GraphQLString},
         direction:{type:GraphQLString},
         bestopid: {type:GraphQLString}
-      },resolve(parentValue,args){
-        let r = timetables.find(t=>t.route===args.route&&t.direction ===args.direction)
-        //console.log(r.stops.find(stop=>stop.bestopid===args.bestopid))
+       
+      },
+      async resolve(parentValue,args){
+        let { route, direction, bestopid } = args;
+        //console.log("args ", args)
+        // let r = timetables.find(t=>t.route===args.route&&t.direction ===args.direction)
+        // return r.stops.find(stop=>stop.bestopid===args.bestopid)
+        return await BusRoute.find({route:route,direction:direction,"stops.bestopid": bestopid})
+        .exec()
+        .then(doc=>{
+          return doc[0].stops.find(stop=>stop.bestopid === bestopid)
+        })
+      }
+    },
+    //think this will replace main stop query
+    // stopWithSpecificTimetable:{
+    //   type: busStopType,
+    //   args:{
+    //     route:{type:GraphQLString},
+    //     direction:{type:GraphQLString},
+    //     bestopid: {type:GraphQLString},
+    //     day:{type:GraphQLString}
+    //   },
+    //   async resolve(parentValue,args){
+    //     let { route, direction, bestopid } = args;
+    //     return await BusRoute.find({route:route,direction:direction,"stops.bestopid": bestopid})
+    //     .exec()
+    //     .then(doc=>{
+    //       const timetableRequested = helpers.getTimetableName(args.day)
+    //       let respondWithtimetable = {}
+          
+          
+    //       let y = doc[0].stops.find(stop=>stop.bestopid === bestopid)
+    //       respondWithtimetable[`${timetableRequested}`] = y[timetableRequested];
+    //       console.log("resp with... " , respondWithtimetable)
+    //       y
+    //       return y
+    //     })
+    //   }
+    // },
 
-     
-        return r.stops.find(stop=>stop.bestopid===args.bestopid)
+
+    routeOneStop:{
+      type: routeOneStopType,
+      args:{
+        route:{type:GraphQLString},
+        direction:{type:GraphQLString},
+        bestopid: {type:GraphQLString}
+      },
+      async resolve(parentValue,args){
+        let m = await  BusRoute.aggregate([{$unwind: "$stops"},{$match: { "route": args.route, "direction": args.direction, "stops.bestopid": args.bestopid  } }])
+        console.log(m)
+        return m[0];
       }
     },
     allstops:{
@@ -157,10 +222,11 @@ const RootQuery = new GraphQLObjectType({
             
         })
         
-        //console.log(stops.flat())
+        
         return stops.flat()
       }
     }
+
   }
 })
 
