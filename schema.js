@@ -1,7 +1,8 @@
 //mongo related
 const config = require('./config');
 const mongoose = require('mongoose');
-const BusRoute = require('./mongoSchema');
+const BusRoute = require('./busRoute');
+const Snapshot = require('./snapshot.js');
 const helpers = require('./helpers');
 const axios = require('axios');
 const{
@@ -13,9 +14,9 @@ const{
 } = require('graphql');
 
 //timetables is being phased out
-const timetables = require('./timetablesOut.json');
+const timetables = require('./wtf.json');
 
-mongoose.connect(config.MONGO_URI,{useNewUrlParser:true})
+mongoose.connect(config.MONGO_URI_NEW,{useNewUrlParser:true})
 
 
 /*
@@ -115,6 +116,8 @@ const busStopType = new GraphQLObjectType({
     _id:{type:GraphQLInt},
     name:{type:GraphQLString},
     bestopid:{type:GraphQLString},
+    latitude:{type:GraphQLString},
+    longitude:{type:GraphQLString},
     stop_sequence:{type:GraphQLInt},
     bus_times_week:{type: GraphQLList(busTimetableType)},
     bus_times_sat:{type: GraphQLList(busTimetableType)}, 
@@ -135,6 +138,15 @@ const SingleStopSnapType = new GraphQLObjectType({
     bus_times:{type: GraphQLList(busTimetableType)},
     snapshots: {type: GraphQLList(snapshotType)}
 
+  })
+})
+
+const NextPrevType = new GraphQLObjectType({
+  name:'NextPrev',
+  fields:()=>({
+    next:{type: busStopType},
+    prev:{type: busStopType}
+  
   })
 })
 
@@ -175,6 +187,7 @@ const routeOneStopType = new GraphQLObjectType({
 GraphQL Queries
 
 */
+
 const RootQuery = new GraphQLObjectType({
   name:'RootQueryType',
   fields:{
@@ -192,7 +205,29 @@ const RootQuery = new GraphQLObjectType({
             {$match:{route:route,direction:direction}},
             {$project:{"stops.snapshots":0}}
           ])
-         // console.log("got overview>>>>>>>>>>>>>>>>>> ", busRouteOverview)
+
+          return busRouteOverview[0]
+      }
+      
+    },
+    busRouteOverviewLocal:{
+      type: busRouteType,
+      args:{
+        route:{type:GraphQLString},
+        direction:{type:GraphQLString}
+      },
+      async resolve(parentValue,args){
+ 
+          const rt= args.route;
+          const dir = args.direction;
+         // return await BusRoute.findOne({route:route,direction:direction})
+         //console.log(timetables)
+          let busRouteOverview = timetables.filter(r=>{
+            console.log(r.route +' and '+ r.direction)
+            console.log(rt +' p '+ dir)
+            return (r.route===rt && r.direction ===dir)
+          })
+          console.log(busRouteOverview)
           return busRouteOverview[0]
       }
       
@@ -227,28 +262,62 @@ const RootQuery = new GraphQLObjectType({
         })
       }
     },
-    stop2:{
-      type: busStopType,
+    nextPrevStops:{
+      type: NextPrevType,
       args:{
         route:{type:GraphQLString},
         direction:{type:GraphQLString},
-        bestopid: {type:GraphQLString}
+        sequence: {type:GraphQLString}
        
       },
       async resolve(parentValue,args){
-        console.log("recieved request")
-        let { route, direction, bestopid } = args;
-        let theBusStop = await BusRoute.aggregate([
+     
+        let { route, direction, sequence } = args;
+        let nextSequence = parseInt(sequence) +1;
+        let prevSequence = parseInt(sequence) -1;
+        nextSequence = nextSequence.toString();
+        prevSequence = prevSequence.toString();
+ 
+        let nextStop = await BusRoute.aggregate([
+            {$match: {route:route,direction:direction}},
+            {$unwind: '$stops'},
+            {$match: {'stops.stop_sequence':nextSequence}},
+            {$replaceRoot: { newRoot: "$stops" }}
+         ])
+         let prevStop  = await BusRoute.aggregate([
           {$match: {route:route,direction:direction}},
           {$unwind: '$stops'},
-          {$match: {'stops.bestopid':bestopid}},
+          {$match: {'stops.stop_sequence':prevSequence}},
           {$replaceRoot: { newRoot: "$stops" }}
        ])
-    
-       console.log("got bus stop", theBusStop.length)
-       return theBusStop[0]
+        
+        let response = {next:nextStop[0],prev:prevStop[0]}
+        
+        return response;
       }
     },
+    // stop2:{
+    //   type: busStopType,
+    //   args:{
+    //     route:{type:GraphQLString},
+    //     direction:{type:GraphQLString},
+    //     bestopid: {type:GraphQLString}
+       
+    //   },
+    //   async resolve(parentValue,args){
+    //     console.log("recieved request")
+    //     let { route, direction, bestopid } = args;
+    //     let theBusStop = await BusRoute.aggregate([
+    //       {$match: {route:route,direction:direction}},
+    //       {$unwind: '$stops'},
+    //       {$match: {'stops.bestopid':bestopid}},
+    //       {$replaceRoot: { newRoot: "$stops" }}
+    //    ])
+    
+    //    console.log("got bus stop", theBusStop.length)
+    //    return theBusStop[0]
+    //   }
+    // },
     bus_times_x_snaps:{
       type: busStopType,
       args:{
@@ -287,13 +356,13 @@ const RootQuery = new GraphQLObjectType({
         .exec()
         .then(doc=>{
           //make sure
-          console.log("here?",doc[0].stops[0].snapshots.length)
+         // console.log("here?",doc[0].stops[0].snapshots.length)
 
           let resp = doc[0].stops.find(stop=>stop.bestopid === bestopid).toObject();
         
           //use only snapshots for today
           let relevantSnaps = resp.snapshots.filter(snap=>snap.dayOfWeek === dayToday);
-          console.log(relevantSnaps)
+          //console.log(relevantSnaps)
           //use today's bus_times_X
           let relevantTimetable = resp[`${whichTimetable}`];
           
@@ -319,10 +388,10 @@ const RootQuery = new GraphQLObjectType({
        
       },
       async resolve(parentValue,args){
-        // console.log("in resolve", args.requestedTimetable)
+  
         //requestedTimetable will be a day of the week, 3 letters only with a leading capital letter.
         let { route, direction, bestopid, requestedTimetable } = args;
-        console.log("in resolve", requestedTimetable)
+        //console.log("in resolve", requestedTimetable)
         if(!route || !direction || !bestopid || !requestedTimetable){
           throw new Error('Fields missing- route, direction, bestopid, requestedTimetable required.');
         }
@@ -330,7 +399,6 @@ const RootQuery = new GraphQLObjectType({
         let dayToday;
 
         //determine which bus_times_x (timetable) to use
-
         const availableTimetables = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
         if(requestedTimetable !== ''){//if some param is passed, check
           if(availableTimetables.includes(requestedTimetable)){
@@ -358,23 +426,26 @@ const RootQuery = new GraphQLObjectType({
         {$replaceRoot: { newRoot: "$stops" }}
      ])
 
-     //get the snapshots for dayToday/requestedTimetable
-     //console.log("day today should be tuesday ", dayToday)
-     let theSnapshots =  await BusRoute.aggregate([
-      {$match: {route:route,direction:direction}},
-      {$unwind: '$stops'},
-      {$match: {'stops.bestopid':bestopid}},
-      {$unwind: '$stops.snapshots'},
-      {$match: {'stops.snapshots.dayOfWeek':`${dayToday}`}},
-      {$replaceRoot: { newRoot: "$stops.snapshots"}}
-     ])
+ 
+        theBusStop = theBusStop[0]
+ 
+        let theBusStopId = theBusStop._id;
+      let theSnapshots = await  Snapshot.find({stopRef:`${theBusStopId}`,dayOfWeek:`${dayToday}`})
+      //Snapshot.find({stopRef:`${theBusStopId}`,dayOfWeek:`${dayToday}`})
+      // .exec()
+      // .then(snaps=>{
+      //   console.log("snaps ", snaps)
+      //   theBusStop.snapshots = snaps
+      
+      // })
+       
      
         //override theBusStop (all)snapshots with only the ones that occured on dayToday/requested timetable
-        theBusStop = theBusStop[0]
-        console.log("before replace ",theBusStop.snapshots.length )
-        //console.log(">>>>>>", theSnapshots[0])
         theBusStop.snapshots = theSnapshots
-        console.log("after replace ",theBusStop.snapshots.length )
+        //console.log("theSnapshots ", theBusStop.snapshots.length)
+
+        
+      
 
           //use appropiate bus_times_X
           let relevantTimetable = theBusStop[`${whichTimetable}`];
@@ -393,7 +464,7 @@ const RootQuery = new GraphQLObjectType({
           //add key with the new data added
           theBusStop.bus_times = respWithAllAvg;
 
-          console.log("got avgs, returning...", theBusStop.bus_times)
+          //console.log("got avgs, returning...", theBusStop.bus_times)
           return theBusStop;
         
       }
@@ -433,41 +504,40 @@ const RootQuery = new GraphQLObjectType({
     },
 
 
-    testq:{
-      type: new GraphQLList(snapshotType),
+    // testq:{
+    //   type: new GraphQLList(snapshotType),
       
-      args:{
-        route:{type:GraphQLString},
-        direction:{type:GraphQLString},
-        bestopid:{type:GraphQLString},
-        dayOfWeek:{type:GraphQLString}
-      },
-      async resolve(parentValue,args){
-        console.log("res")
-        const {route,direction,bestopid,dayOfWeek} = args;
+    //   args:{
+    //     route:{type:GraphQLString},
+    //     direction:{type:GraphQLString},
+    //     bestopid:{type:GraphQLString},
+    //     dayOfWeek:{type:GraphQLString}
+    //   },
+    //   async resolve(parentValue,args){
+    //     const {route,direction,bestopid,dayOfWeek} = args;
 
-        /*
-        This query returns an array of snapshots based on a day
-        */
-         return await BusRoute.aggregate([
+    //     /*
+    //     This query returns an array of snapshots based on a day
+    //     */
+    //      return await BusRoute.aggregate([
           
-            {$match: {route:route,direction:direction}},
-            {$unwind: '$stops'},
-            {$match: {'stops.bestopid':bestopid}},
-            {$unwind: '$stops.snapshots'},
-            {$match: {'stops.snapshots.dayOfWeek':`${dayOfWeek}`}},
-            {$replaceRoot: { newRoot: "$stops.snapshots" } }
-           ])
-        //.exec()
-        .then(doc=>{
-          //console.log(doc.length, doc, doc[0].stops.snapshots.length)
-          console.log(doc[0] ,doc.length)
+    //         {$match: {route:route,direction:direction}},
+    //         {$unwind: '$stops'},
+    //         {$match: {'stops.bestopid':bestopid}},
+    //         {$unwind: '$stops.snapshots'},
+    //         {$match: {'stops.snapshots.dayOfWeek':`${dayOfWeek}`}},
+    //         {$replaceRoot: { newRoot: "$stops.snapshots" } }
+    //        ])
+    //     //.exec()
+    //     .then(doc=>{
+    //       //console.log(doc.length, doc, doc[0].stops.snapshots.length)
+    //       console.log(doc[0] ,doc.length)
 
-          return doc
-        })
-        .catch(e=>console.log(e))
-      }
-    },
+    //       return doc
+    //     })
+    //     .catch(e=>console.log(e))
+    //   }
+    // },
     rtpiRequest:{
       type: rtpiResponse,
       args:{
