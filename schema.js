@@ -220,8 +220,7 @@ const RootQuery = new GraphQLObjectType({
  
           const rt= args.route;
           const dir = args.direction;
-         // return await BusRoute.findOne({route:route,direction:direction})
-         //console.log(timetables)
+
           let busRouteOverview = timetables.filter(r=>{
             console.log(r.route +' and '+ r.direction)
             console.log(rt +' p '+ dir)
@@ -419,6 +418,7 @@ const RootQuery = new GraphQLObjectType({
       
 
       //get the bus stop
+      console.log("searching for ", dayToday)
      let theBusStop = await BusRoute.aggregate([
         {$match: {route:route,direction:direction}},
         {$unwind: '$stops'},
@@ -431,6 +431,10 @@ const RootQuery = new GraphQLObjectType({
  
         let theBusStopId = theBusStop._id;
       let theSnapshots = await  Snapshot.find({stopRef:`${theBusStopId}`,dayOfWeek:`${dayToday}`})
+
+      // let theSnapshots = await  Snapshot.find({bestopid:bestopid,dayOfWeek:`${dayToday}`})
+
+      console.log("found ",  theSnapshots.length, ' for ', route,direction, bestopid, ' on ', dayToday)
       //Snapshot.find({stopRef:`${theBusStopId}`,dayOfWeek:`${dayToday}`})
       // .exec()
       // .then(snaps=>{
@@ -503,41 +507,6 @@ const RootQuery = new GraphQLObjectType({
       }
     },
 
-
-    // testq:{
-    //   type: new GraphQLList(snapshotType),
-      
-    //   args:{
-    //     route:{type:GraphQLString},
-    //     direction:{type:GraphQLString},
-    //     bestopid:{type:GraphQLString},
-    //     dayOfWeek:{type:GraphQLString}
-    //   },
-    //   async resolve(parentValue,args){
-    //     const {route,direction,bestopid,dayOfWeek} = args;
-
-    //     /*
-    //     This query returns an array of snapshots based on a day
-    //     */
-    //      return await BusRoute.aggregate([
-          
-    //         {$match: {route:route,direction:direction}},
-    //         {$unwind: '$stops'},
-    //         {$match: {'stops.bestopid':bestopid}},
-    //         {$unwind: '$stops.snapshots'},
-    //         {$match: {'stops.snapshots.dayOfWeek':`${dayOfWeek}`}},
-    //         {$replaceRoot: { newRoot: "$stops.snapshots" } }
-    //        ])
-    //     //.exec()
-    //     .then(doc=>{
-    //       //console.log(doc.length, doc, doc[0].stops.snapshots.length)
-    //       console.log(doc[0] ,doc.length)
-
-    //       return doc
-    //     })
-    //     .catch(e=>console.log(e))
-    //   }
-    // },
     rtpiRequest:{
       type: rtpiResponse,
       args:{
@@ -548,10 +517,7 @@ const RootQuery = new GraphQLObjectType({
         const {route, bestopid} = args
           let rtpiUrl = `https://rtpiapp.rtpi.openskydata.com/RTPIPublicService_v2/service.svc/realtimebusinformation?stopid=${bestopid}&routeid=${route}&format=json`
           
- 
           let rtpi = await axios.get(rtpiUrl)
-          //console.log("got rtpi ", rtpi)
-
           return rtpi.data
       }
       

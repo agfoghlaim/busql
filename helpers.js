@@ -152,19 +152,48 @@ module.exports = {
       let thisBusTotalAggregate = this.aggregateLateOrEarly(bus.snapshots)
 //console.log("tot", thisBusTotalAggregate)
       //to get average, divide totalEarlyOrLate by the number of snaps taken
-   
-      //if(thisBusWetAggregate===null){
-        bus.wet_avg = null;
-      //}else{
-        bus.wet_avg = Math.round(thisBusWetAggregate/bus.wet_snaps.length)
-      //}
-
-      bus.dry_avg = Math.round(thisBusDryAggregate/bus.dry_snaps.length)
-      bus.num_dry = bus.dry_snaps.length;
       
+
+      if(thisBusWetAggregate!==null){
+        //if not null divide aggregate by number of non null results
+        let notNullResults = bus.wet_snaps.filter(snap=>snap.earlyOrLate !== "bus_not_found_on_rtpi").length;
+        if(notNullResults===0){
+          bus.wet_avg = null;
+        }else{
+          bus.wet_avg = Math.round(thisBusWetAggregate/notNullResults)
+        }
+      }
+
+      if(thisBusDryAggregate!==null){
+        //if not null divide aggregate by number of non null results
+        let notNullResults = bus.dry_snaps.filter(snap=>snap.earlyOrLate !== "bus_not_found_on_rtpi").length;
+        if(notNullResults===0){
+          bus.dry_avg = null;
+        }else{
+          bus.dry_avg = Math.round(thisBusDryAggregate/notNullResults)
+        }
+      }
+
+      if(thisBusTotalAggregate!==null){
+        //if not null divide aggregate by number of non null results
+        let notNullResults = bus.snapshots.filter(snap=>snap.earlyOrLate !== "bus_not_found_on_rtpi").length;
+        if(notNullResults===0){
+          bus.total_avg = null;
+        }else{
+          bus.total_avg = Math.round(thisBusTotalAggregate/notNullResults)
+        }
+      }
+
+      //note null/num =>0
+      //null/null => nan
+     // bus.wet_avg = Math.round(thisBusWetAggregate/bus.wet_snaps.length)
+     // bus.dry_avg = Math.round(thisBusDryAggregate/bus.dry_snaps.length)
+      bus.num_dry = bus.dry_snaps.length;
       bus.num_wet = bus.wet_snaps.length;
-      bus.total_avg = Math.round(thisBusTotalAggregate/bus.snapshots.length)
+      //bus.total_avg = Math.round(thisBusTotalAggregate/bus.snapshots.length)
       bus.num_total = bus.snapshots.length;
+
+
       //console.log("tot >>>>>", bus.total_avg)
       // console.log("dry avg No."+ i + ": "+ bus.dry_avg +" should equal " + thisBusDryAggregate + " / " + bus.dry_snaps.length + " ============ " )
 
@@ -173,17 +202,19 @@ module.exports = {
       return bus
     })
     
-    //console.log(timetablesWithSnapshots)
+    
    return timetablesWithSnapshots
 
   },
   aggregateLateOrEarly: function (snapsArray){
     
-    // if(snapsArray.filter(snap=>snap.earlyOrLate==="bus_not_found_on_rtpi").length === snapsArray.length){
-    //   console.log("returning null")
-    //   return null;
-    // }
+    //if never found on rtpi, set avg to null
+    if(snapsArray.filter(snap=>snap.earlyOrLate==="bus_not_found_on_rtpi").length === snapsArray.length){
+      //console.log("returning null")
+      return null;
+    }
     //console.log("continuing")
+
     return snapsArray.reduce((out,snap,i,all)=>{
       if(snap.earlyOrLate === 'late'){
         out +=parseInt(snap.minutesOff)
