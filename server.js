@@ -15,9 +15,8 @@ app.use('/graphql', expressGraphQL({
 }))
 
 app.get('*', (req,res)=>{
-  console.log("something @ wrong route")
-  res.status(400);
-res.send('Use /graphql');
+  res.status(404);
+  res.send('Use /graphql');
 })
 
 const PORT = process.env.PORT || 4000;
